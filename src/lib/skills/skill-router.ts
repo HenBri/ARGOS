@@ -51,20 +51,3 @@ export async function routeSkill(message: string): Promise<Skill | null> {
 
   return null;
 }
-
-/**
- * Recupera todos los skills activos ordenados por prioridad.
- */
-export async function getAllActiveSkills(): Promise<Skill[]> {
-  const { data, error } = await supabase
-    .from('skills_registry')
-    .select('*')
-    .eq('esta_activo', true)
-    .order('prioridad', { ascending: true });
-
-  if (error) {
-    console.error('[SkillRouter] Error al listar skills:', error.message);
-    return [];
-  }
-  return (data || []) as Skill[];
-}

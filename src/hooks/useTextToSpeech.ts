@@ -1,12 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 
 export interface TTSOptions {
-  /** Voice identifier for Google Cloud TTS (e.g., 'es-US-Studio-B') */
+  /** Voice identifier for ElevenLabs (e.g., 't3eeeqhBjrUqcrPvDqUn') */
   voiceId?: string;
   /** Speaking speed, 0.5 (slow) – 2.0 (fast) */
   speed?: number;
-  /** Whether to use the premium Google Cloud TTS. If false, uses native SpeechSynthesis. */
-  useGoogleTTS?: boolean;
   /** Called when audio playback starts */
   onStart?: () => void;
   /** Called when audio playback ends */
@@ -16,16 +14,15 @@ export interface TTSOptions {
 }
 
 /**
- * Hook that synthesizes text to speech.
+ * Hook that synthesizes text to speech via ElevenLabs (/api/tts).
  *
- * It automatically decides between Google Cloud TTS (requires env var `NEXT_PUBLIC_DEFAULT_VOICE_ID`
- * and `GOOGLE_TTS_API_KEY`) and the browser's SpeechSynthesis API.
+ * Falls back to the browser's native SpeechSynthesis API when the
+ * server signals that the ElevenLabs key is missing or invalid.
  */
 export function useTextToSpeech(options: TTSOptions = {}) {
   const {
-    voiceId = process.env.NEXT_PUBLIC_DEFAULT_VOICE_ID || 'es-US-Studio-B',
+    voiceId = process.env.NEXT_PUBLIC_ELEVENLABS_VOICE_ID || 't3eeeqhBjrUqcrPvDqUn',
     speed = parseFloat(process.env.NEXT_PUBLIC_VOICE_SPEED ?? '1.05'),
-    useGoogleTTS = !!process.env.NEXT_PUBLIC_DEFAULT_VOICE_ID && !!process.env.NEXT_PUBLIC_GOOGLE_TTS_API_KEY,
     onStart,
     onEnd,
     onError,
@@ -39,40 +36,66 @@ export function useTextToSpeech(options: TTSOptions = {}) {
       try {
         setIsSpeaking(true);
         onStart?.();
-        if (useGoogleTTS) {
-          // Call our API endpoint that proxies Google Cloud TTS
-          const response = await fetch('/api/tts', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text, voice: voiceId, speed }),
-          });
-          if (!response.ok) throw new Error('TTS request failed');
+
+        // Call our ElevenLabs TTS endpoint
+        const response = await fetch('/api/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, voice: voiceId }),
+        });
+
+        // Check if the API returned a JSON fallback signal
+        const contentType = response.headers.get('content-type') || '';
+
+        if (contentType.includes('application/json')) {
+          const data = await response.json();
+          if (data?.fallback) {
+            // Fallback: use native SpeechSynthesis
+            const utter = new SpeechSynthesisUtterance(text);
+            utter.lang = 'es-ES';
+            utter.rate = speed;
+            speechSynthesis.speak(utter);
+            await new Promise<void>((resolve, reject) => {
+              utter.onend = () => resolve();
+              utter.onerror = e => reject(e);
+            });
+            setIsSpeaking(false);
+            onEnd?.();
+            return;
+          }
+        }
+
+        // ElevenLabs returned MP3 audio
+        if (contentType.includes('audio')) {
           const blob = await response.blob();
           const url = URL.createObjectURL(blob);
           setAudioUrl(url);
-        } else {
-          // Fallback using native SpeechSynthesis
-          const utter = new SpeechSynthesisUtterance(text);
-          utter.lang = 'es-ES';
-          utter.rate = speed;
-          const matching = speechSynthesis.getVoices().find(v => v.name.includes(voiceId));
-          if (matching) utter.voice = matching;
-          speechSynthesis.speak(utter);
-          await new Promise<void>((resolve, reject) => {
-            utter.onend = () => resolve();
-            utter.onerror = e => reject(e);
-          });
-          setIsSpeaking(false);
-          onEnd?.();
+
+          const audio = new Audio(url);
+          audio.onended = () => {
+            URL.revokeObjectURL(url);
+            setIsSpeaking(false);
+            onEnd?.();
+          };
+          audio.onerror = () => {
+            URL.revokeObjectURL(url);
+            setIsSpeaking(false);
+            onError?.('Audio playback error');
+          };
+          await audio.play();
           return;
         }
+
+        // Unexpected response — fall back silently
+        setIsSpeaking(false);
+        onEnd?.();
       } catch (e) {
         onError?.(e);
         setIsSpeaking(false);
         throw e;
       }
     },
-    [voiceId, speed, useGoogleTTS, onStart, onEnd, onError]
+    [voiceId, speed, onStart, onEnd, onError]
   );
 
   useEffect(() => {

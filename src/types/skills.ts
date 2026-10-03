@@ -1,5 +1,3 @@
-import { Json } from './database';
-
 // ============================================================================
 // TIPOS PARA EL SISTEMA DE SKILLS DE JARVIS PASEO
 // ============================================================================
@@ -40,44 +38,9 @@ export interface SkillParametros {
   [key: string]: unknown;
 }
 
-/**
- * Resultado de la búsqueda de un Skill por el Skill Router.
- */
-export interface SkillMatch {
-  skill: Skill;
-  matchType: 'exact' | 'semantic' | 'fallback';
-  confidence: number; // 0-1
-  matchedTrigger?: string;
-}
-
-/**
- * YAML Frontmatter de un archivo SKILL.md.
- */
-export interface SkillFrontmatter {
-  name: string;
-  description: string;
-  triggers: string[];
-  priority?: number;
-  requires_auth?: boolean;
-  tables?: string[];
-  rpcs?: string[];
-  rpc_principal?: string;
-  categoria?: string;
-}
-
-/**
- * Resultado de parsear un archivo SKILL.md.
- */
-export interface ParsedSkillFile {
-  frontmatter: SkillFrontmatter;
-  instructions: string;
-  rawContent: string;
-}
-
 // ============================================================================
 // TIPOS PARA API CRUD DE SKILLS
 // ============================================================================
-
 export interface CreateSkillRequest {
   nombre: string;
   descripcion: string;
@@ -96,17 +59,6 @@ export interface UpdateSkillRequest {
   parametros?: SkillParametros;
   esta_activo?: boolean;
   prioridad?: number;
-}
-
-export interface SkillListResponse {
-  skills: Skill[];
-  total: number;
-}
-
-export interface SkillResponse {
-  success: boolean;
-  skill?: Skill;
-  message: string;
 }
 
 // ============================================================================
@@ -129,31 +81,4 @@ export interface AssembledContext {
   activeSkill: Skill | null;
   sources: ContextSource[];
   totalTokenEstimate: number;
-}
-
-// ============================================================================
-// TIPOS PARA EL QUERY ENGINE
-// ============================================================================
-
-export type RPCName = 
-  | 'buscar_tiendas'
-  | 'eventos_vigentes'
-  | 'consultar_billetera'
-  | 'recompensas_activas'
-  | 'resumen_canjes_cliente'
-  | 'historial_transacciones_cliente'
-  | 'buscar_base_conocimiento'
-  | 'buscar_skill_por_disparador';
-
-export interface RPCCall {
-  functionName: RPCName;
-  params: Record<string, unknown>;
-  description: string;
-}
-
-export interface QueryResult {
-  rpcName: RPCName;
-  data: Record<string, unknown>[] | null;
-  error: string | null;
-  formattedText: string;
 }

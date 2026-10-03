@@ -55,9 +55,6 @@ export const ChatWidget: React.FC = () => {
       // We don't call handleSendMessage here because useVoiceConversation handles its own fetch to /api/chat.
       // But we DO want to see the UI update.
     },
-    onResponseReceived: (text) => {
-      // The Realtime subscription will handle appending the final model message to the list!
-    }
   });
 
   // 1. Inicializar o restaurar Session ID desde localStorage

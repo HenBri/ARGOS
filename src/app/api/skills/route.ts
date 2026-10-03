@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { Skill, CreateSkillRequest, UpdateSkillRequest } from '@/types/skills';
+import { CreateSkillRequest, UpdateSkillRequest } from '@/types/skills';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

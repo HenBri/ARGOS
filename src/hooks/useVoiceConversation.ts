@@ -16,7 +16,7 @@ interface UseVoiceConversationOptions {
  * Orchestrates the full STT → API → TTS → STT cycle.
  * - Listens to the user via Web Speech API (STT)
  * - Sends the transcript to /api/chat
- * - Reads the response aloud via /api/tts (Google Cloud TTS or SpeechSynthesis)
+ * - Reads the response aloud via /api/tts (ElevenLabs TTS or SpeechSynthesis)
  * - Optionally re-activates the microphone after the response (continuous mode)
  */
 export function useVoiceConversation({
@@ -41,7 +41,7 @@ export function useVoiceConversation({
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // ── TTS ──────────────────────────────────────────────────────────────────
-  const { isSpeaking, setIsSpeaking } = useTextToSpeech({
+  useTextToSpeech({
     voiceId: preferences.voiceId,
     speed: preferences.speed,
     onStart: () => setVoiceState((s) => ({ ...s, isSpeaking: true, phase: 'speaking' })),
@@ -65,13 +65,34 @@ export function useVoiceConversation({
     async (text: string) => {
       setVoiceState((s) => ({ ...s, isSpeaking: true, phase: 'speaking' }));
       try {
-        // Try Google Cloud TTS via /api/tts
+        // Try ElevenLabs TTS via /api/tts
         const res = await fetch('/api/tts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, voice: preferences.voiceId, speed: preferences.speed }),
+          body: JSON.stringify({ text, voice: preferences.voiceId }),
         });
 
+        const contentType = res.headers.get('content-type') || '';
+
+        // ElevenLabs TTS returned MP3 audio
+        if (contentType.includes('audio')) {
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const audio = new Audio(url);
+          audio.volume = preferences.volume;
+          audioRef.current = audio;
+          audio.onended = () => {
+            URL.revokeObjectURL(url);
+            setVoiceState((s) => ({ ...s, isSpeaking: false }));
+            if (isVoiceModeRef.current && autoReactivate && preferences.autoListen) {
+              setTimeout(() => { if (isVoiceModeRef.current) startListening(); }, 400);
+            }
+          };
+          await audio.play();
+          return;
+        }
+
+        // JSON response — check for fallback signal
         const data = await res.json().catch(() => null);
 
         if (data?.fallback) {
@@ -88,23 +109,6 @@ export function useVoiceConversation({
           };
           speechSynthesis.speak(utter);
           return;
-        }
-
-        // Google Cloud TTS returned MP3
-        if (res.headers.get('content-type')?.includes('audio')) {
-          const blob = await res.blob();
-          const url = URL.createObjectURL(blob);
-          const audio = new Audio(url);
-          audio.volume = preferences.volume;
-          audioRef.current = audio;
-          audio.onended = () => {
-            URL.revokeObjectURL(url);
-            setVoiceState((s) => ({ ...s, isSpeaking: false }));
-            if (isVoiceModeRef.current && autoReactivate && preferences.autoListen) {
-              setTimeout(() => { if (isVoiceModeRef.current) startListening(); }, 400);
-            }
-          };
-          await audio.play();
         }
       } catch (e) {
         console.error('[speakText error]', e);
@@ -167,7 +171,7 @@ export function useVoiceConversation({
     setVoiceState((s) => ({ ...s, isListening: false }));
   }, []);
 
-  const { startListening: sttStart, stopListening: sttStop, reset: sttReset } = useSpeechRecognition({
+  const { startListening: sttStart, stopListening: sttStop } = useSpeechRecognition({
     lang: 'es-BO',
     continuous: false,
     interimResults: true,
